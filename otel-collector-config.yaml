@@ -35,11 +35,3 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [clickhouse]
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [clickhouse]
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [clickhouse]
