@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/target
+**/*.env
+**/*.env.prod
+**/*.env.prod.backup
+**/*.sqlite
+**/*.DS_Store
