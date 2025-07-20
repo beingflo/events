@@ -51,7 +51,7 @@ services:
     container_name: grafana
     env_file: ".env.prod"
     ports:
-      - 3005:3000
+      - 3020:3000
     volumes:
       - grafana-data:/var/lib/grafana
     restart: unless-stopped
