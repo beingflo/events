@@ -13,8 +13,8 @@ exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000
     database: events
-    username: ${env:CLICKHOUSE_USER}
-    password: ${env:CLICKHOUSE_PASSWORD}
+    username: ${CLICKHOUSE_USER}
+    password: ${CLICKHOUSE_PASSWORD}
     ttl: 72h
     create_schema: true
     timeout: 5s
