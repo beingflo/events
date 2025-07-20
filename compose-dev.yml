@@ -2,14 +2,13 @@ services:
   clickhouse:
     image: "clickhouse/clickhouse-server:25.6"
     container_name: clickhouse
+    volumes:
+      - clickhouse-db:/var/lib/clickhouse
+    env_file: ".env"
     ports:
-      - 18123:8123
-      - 19000:9000
+      - 8123:8123
+      - 9000:9000
     restart: unless-stopped
-    environment:
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=default
-      - CLICKHOUSE_DB=events
     ulimits:
       nofile:
         soft: 262144
@@ -30,14 +29,14 @@ services:
       start_period: 40s
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.128.0
+    build:
+      context: .
+      dockerfile: Dockerfile.otel
     container_name: otel-collector
     ports:
       - 4317:4317
       - 4318:4318
       - 55679:55679
-    volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     command: ["--config=/etc/otel-collector-config.yaml"]
     restart: unless-stopped
     depends_on:
@@ -47,10 +46,9 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
+    env_file: ".env"
     ports:
-      - "127.0.0.1:3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - 3000:3000
     volumes:
       - grafana-data:/var/lib/grafana
     restart: unless-stopped
@@ -59,4 +57,7 @@ services:
         condition: service_healthy
 
 volumes:
+  clickhouse-db:
+    name: "clickhouse-db"
   grafana-data:
+    name: "grafana-data"
