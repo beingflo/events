@@ -5,6 +5,8 @@ services:
     volumes:
       - clickhouse-db:/var/lib/clickhouse
     env_file: ".env.prod"
+    networks:
+      - events_net
     ports:
       - 8123:8123
       - 9000:9000
