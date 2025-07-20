@@ -31,6 +31,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.128.0
     container_name: otel-collector
+    env_file: ".env"
     ports:
       - 4317:4317
       - 4318:4318
