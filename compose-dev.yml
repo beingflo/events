@@ -36,8 +36,9 @@ services:
       - 4317:4317
       - 4318:4318
       - 55679:55679
-    volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    configs:
+      - source: otel-config
+        target: /etc/otel-collector-config.yaml
     command: ["--config=/etc/otel-collector-config.yaml"]
     restart: unless-stopped
     depends_on:
@@ -49,7 +50,7 @@ services:
     container_name: grafana
     env_file: ".env"
     ports:
-      - 3000:3000
+      - 3040:3000
     volumes:
       - grafana-data:/var/lib/grafana
     restart: unless-stopped
@@ -62,3 +63,44 @@ volumes:
     name: "clickhouse-db"
   grafana-data:
     name: "grafana-data"
+
+configs:
+  otel-config:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+      processors:
+        batch:
+
+      exporters:
+        clickhouse:
+          endpoint: tcp://clickhouse:9000
+          database: events
+          username: ${CLICKHOUSE_USER}
+          password: ${CLICKHOUSE_PASSWORD}
+          ttl: 72h
+          create_schema: true
+          timeout: 5s
+          retry_on_failure:
+            enabled: true
+            initial_interval: 5s
+            max_interval: 30s
+            max_elapsed_time: 300s
+
+      extensions:
+        health_check:
+          endpoint: 0.0.0.0:55679
+
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [clickhouse]
