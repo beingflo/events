@@ -29,14 +29,14 @@ services:
       start_period: 40s
 
   otel-collector:
-    build:
-      context: .
-      dockerfile: Dockerfile.otel
+    image: otel/opentelemetry-collector-contrib:0.128.0
     container_name: otel-collector
     ports:
       - 4317:4317
       - 4318:4318
       - 55679:55679
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     command: ["--config=/etc/otel-collector-config.yaml"]
     restart: unless-stopped
     depends_on:
