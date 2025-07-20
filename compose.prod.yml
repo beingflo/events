@@ -34,8 +34,9 @@ services:
     image: otel/opentelemetry-collector-contrib:0.128.0
     container_name: otel-collector
     env_file: ".env.prod"
-    volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    configs:
+      - source: otel-config
+        target: /etc/otel-collector-config.yaml
     ports:
       - 4317:4317
       - 4318:4318
@@ -76,3 +77,44 @@ networks:
     name: "events_net"
   caddy_net:
     external: true
+
+configs:
+  otel-config:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+      processors:
+        batch:
+
+      exporters:
+        clickhouse:
+          endpoint: tcp://clickhouse:9000
+          database: events
+          username: ${CLICKHOUSE_USER}
+          password: ${CLICKHOUSE_PASSWORD}
+          ttl: 72h
+          create_schema: true
+          timeout: 5s
+          retry_on_failure:
+            enabled: true
+            initial_interval: 5s
+            max_interval: 30s
+            max_elapsed_time: 300s
+
+      extensions:
+        health_check:
+          endpoint: 0.0.0.0:55679
+
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [clickhouse]
