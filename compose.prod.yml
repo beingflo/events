@@ -39,6 +39,9 @@ services:
       - 55679:55679
     command: ["--config=/etc/otel-collector-config.yaml"]
     restart: unless-stopped
+    networks:
+      - events_net
+      - caddy_net
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -52,6 +55,9 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
     restart: unless-stopped
+    networks:
+      - events_net
+      - caddy_net
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -61,3 +67,9 @@ volumes:
     name: "clickhouse-db"
   grafana-data:
     name: "grafana-data"
+
+networks:
+  events_net:
+    name: "events_net"
+  caddy_net:
+    external: true
