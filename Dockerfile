@@ -1,4 +1,4 @@
-FROM rust:1.81 AS chef 
+FROM rust:1.88 AS chef 
 RUN cargo install cargo-chef 
 WORKDIR /usr/src/events/service
 
