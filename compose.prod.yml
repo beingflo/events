@@ -1,4 +1,13 @@
 services:
+  events:
+    image: "ghcr.io/beingflo/events:0.1.0"
+    container_name: events
+    env_file: "service/.env.prod"
+    restart: unless-stopped
+    networks:
+      - caddy_net
+      - events_net
+
   clickhouse:
     image: "clickhouse/clickhouse-server:25.6"
     container_name: clickhouse
