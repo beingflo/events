@@ -27,7 +27,7 @@ pub async fn upload_data(
         }
     };
 
-    if token != state.embedded_token {
+    if token != state.embedded_token && token != state.heuried_token {
         return Err(AppError::Status(StatusCode::UNAUTHORIZED));
     }
 

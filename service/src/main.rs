@@ -26,6 +26,7 @@ mod gps;
 struct AppState {
     gps_token: String,
     embedded_token: String,
+    heuried_token: String,
 }
 
 #[tokio::main]
@@ -41,6 +42,10 @@ pub async fn main() -> Result<(), AppError> {
     };
     let Some((_, embedded_token)) = env::vars().find(|v| v.0.eq("EMBEDDED_TOKEN")) else {
         error!("Embedded token not in environment");
+        abort();
+    };
+    let Some((_, heuried_token)) = env::vars().find(|v| v.0.eq("HEURIED_TOKEN")) else {
+        error!("Heuried token not in environment");
         abort();
     };
 
@@ -108,8 +113,9 @@ pub async fn main() -> Result<(), AppError> {
                 ),
         )
         .with_state(AppState {
-            gps_token: gps_token,
-            embedded_token: embedded_token,
+            gps_token,
+            embedded_token,
+            heuried_token,
         });
 
     let port = 3000;
