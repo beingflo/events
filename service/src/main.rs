@@ -16,14 +16,16 @@ use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
-use crate::gps::upload_gps_data;
+use crate::{data::upload_data, gps::upload_gps_data};
 
+mod data;
 mod error;
 mod gps;
 
 #[derive(Clone)]
 struct AppState {
     gps_token: String,
+    embedded_token: String,
 }
 
 #[tokio::main]
@@ -35,6 +37,10 @@ pub async fn main() -> Result<(), AppError> {
 
     let Some((_, gps_token)) = env::vars().find(|v| v.0.eq("GPS_PUSH_TOKEN")) else {
         error!("GPS push token not in environment");
+        abort();
+    };
+    let Some((_, embedded_token)) = env::vars().find(|v| v.0.eq("EMBEDDED_TOKEN")) else {
+        error!("Embedded token not in environment");
         abort();
     };
 
@@ -61,8 +67,7 @@ pub async fn main() -> Result<(), AppError> {
         .init();
 
     let app = Router::new()
-        //.route("/api/data", post(upload_data))
-        //.route("/api/data/:emitter/:bucket", post(upload_data_url_only))
+        .route("/api/data", post(upload_data))
         .route("/api/gps/:bucket/:token", post(upload_gps_data))
         .layer(
             TraceLayer::new_for_http()
@@ -104,6 +109,7 @@ pub async fn main() -> Result<(), AppError> {
         )
         .with_state(AppState {
             gps_token: gps_token,
+            embedded_token: embedded_token,
         });
 
     let port = 3000;
