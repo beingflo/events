@@ -1,0 +1,27 @@
+[package]
+name = "events"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+axum = "0.7.6"
+axum-extra = { version = "0.9.4", features = ["cookie"] }
+tracing-subscriber = "0.3.18"
+tracing = "0.1.40"
+tower-http = { version = "0.6.1", features = ["trace"] }
+mime_guess = "2.0.5"
+uuid = { version = "1.10.0", features = ["v4"] }
+jiff = "0.1.13"
+thiserror = "1.0.64"
+bcrypt = "0.15.1"
+rand = "0.8.5"
+dotenvy = "0.15.7"
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"] }
+opentelemetry = "0.30.0"
+opentelemetry-otlp = "0.30.0"
+tracing-opentelemetry = "0.31.0"
+opentelemetry-stdout = "0.30.0"
+opentelemetry-semantic-conventions = "0.30.0"
