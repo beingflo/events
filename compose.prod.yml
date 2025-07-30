@@ -105,7 +105,6 @@ configs:
           database: events
           username: ${CLICKHOUSE_USER}
           password: ${CLICKHOUSE_PASSWORD}
-          ttl: 72h
           create_schema: true
           timeout: 5s
           retry_on_failure:
