@@ -3,9 +3,6 @@ services:
     image: "ghcr.io/beingflo/events:0.1.4"
     container_name: events
     env_file: "service/.env.prod"
-    configs:
-      - source: ch-config
-        target: /etc/clickhouse-server/config.d/backup_disk.xml
     restart: unless-stopped
     networks:
       - caddy_net
@@ -17,6 +14,9 @@ services:
     volumes:
       - clickhouse-db:/var/lib/clickhouse
     env_file: ".env.prod"
+    configs:
+      - source: ch-config
+        target: /etc/clickhouse-server/config.d/backup_disk.xml
     networks:
       - events_net
     ports:
