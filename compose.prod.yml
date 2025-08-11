@@ -3,6 +3,9 @@ services:
     image: "ghcr.io/beingflo/events:0.1.4"
     container_name: events
     env_file: "service/.env.prod"
+    configs:
+      - source: ch-config
+        target: /etc/clickhouse-server/config.d/backup_disk.xml
     restart: unless-stopped
     networks:
       - caddy_net
@@ -86,6 +89,22 @@ networks:
     external: true
 
 configs:
+  ch-config:
+    content: |
+      <clickhouse>
+        <storage_configuration>
+            <disks>
+                <backups>
+                    <type>local</type>
+                    <path>/backups/</path>
+                </backups>
+            </disks>
+        </storage_configuration>
+        <backups>
+            <allowed_disk>backups</allowed_disk>
+            <allowed_path>/backups/</allowed_path>
+        </backups>
+      </clickhouse>
   otel-config:
     content: |
       receivers:

@@ -5,6 +5,9 @@ services:
     volumes:
       - clickhouse-db:/var/lib/clickhouse
     env_file: ".env"
+    configs:
+      - source: ch-config
+        target: /etc/clickhouse-server/config.d/backup_disk.xml
     ports:
       - 8123:8123
       - 9000:9000
@@ -65,6 +68,22 @@ volumes:
     name: "grafana-data"
 
 configs:
+  ch-config:
+    content: |
+      <clickhouse>
+        <storage_configuration>
+            <disks>
+                <backups>
+                    <type>local</type>
+                    <path>/backups/</path>
+                </backups>
+            </disks>
+        </storage_configuration>
+        <backups>
+            <allowed_disk>backups</allowed_disk>
+            <allowed_path>/backups/</allowed_path>
+        </backups>
+      </clickhouse>
   otel-config:
     content: |
       receivers:
