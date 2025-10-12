@@ -21,7 +21,7 @@ services:
       ofelia.enabled: "true"
       ofelia.job-exec.datecron.schedule: "@every 5s"
       ofelia.job-exec.datecron.command: >
-        bash -c "clickhouse-client -q \"use events; BACKUP TABLE otel_traces TO S3('https://sos-ch-dk-2.exo.io/arm-backup/events-dev/test/$(date +%Y-%m-%d_%H-%M-%S)/', '${S3_KEY}', '${S3_SECRET}')\""
+        bash -c "clickhouse-client -q \"use events; BACKUP TABLE otel_traces TO S3('https://sos-ch-dk-2.exo.io/arm-backup/events-dev/test/$(date +%Y-%m-%d_%H-%M-%S)/', '${S3_KEY}', '${S3_SECRET}')\" && wget --timeout=10 --tries=6 -O /dev/null https://pulse.updown.io/${UPDOWN_BACKUP_PULSE}"
     ulimits:
       nofile:
         soft: 262144
