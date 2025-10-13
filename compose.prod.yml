@@ -7,10 +7,6 @@ services:
     networks:
       - caddy_net
       - events_net
-    labels:
-      ofelia.enabled: "true"
-      ofelia.job-exec.events.schedule: "@every 5s"
-      ofelia.job-exec.events.command: "echo test > ./test.txt"
 
   clickhouse:
     image: "clickhouse/clickhouse-server:25.6"
