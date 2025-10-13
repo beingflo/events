@@ -8,14 +8,6 @@ services:
       - caddy_net
       - events_net
 
-  ofelia:
-    image: mcuadros/ofelia:0.3
-    depends_on:
-      - clickhouse
-    command: daemon --docker
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
   clickhouse:
     image: "clickhouse/clickhouse-server:25.6"
     container_name: clickhouse
