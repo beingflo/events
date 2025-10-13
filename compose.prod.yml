@@ -9,8 +9,8 @@ services:
       - events_net
     labels:
       ofelia.enabled: "true"
-      ofelia.job-exec.datecron.schedule: "@every 5s"
-      ofelia.job-exec.datecron.command: "echo test > ./test.txt"
+      ofelia.job-exec.events.schedule: "@every 5s"
+      ofelia.job-exec.events.command: "echo test > ./test.txt"
 
   clickhouse:
     image: "clickhouse/clickhouse-server:25.6"
@@ -47,8 +47,8 @@ services:
       start_period: 40s
     labels:
       ofelia.enabled: "true"
-      ofelia.job-exec.datecron.schedule: "@daily"
-      ofelia.job-exec.datecron.command: >
+      ofelia.job-exec.clickhouse.schedule: "@daily"
+      ofelia.job-exec.clickhouse.command: >
         bash -c "clickhouse-client -q \"use events; BACKUP TABLE otel_traces TO S3('https://sos-ch-dk-2.exo.io/arm-backup/events-prod/$(date +%Y-%m-%d_%H-%M)/', '${S3_KEY}', '${S3_SECRET}')\" && wget --timeout=10 --tries=6 -O /dev/null https://pulse.updown.io/${UPDOWN_BACKUP_PULSE}"
 
   otel-collector:
