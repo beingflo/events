@@ -43,7 +43,7 @@ services:
       start_period: 40s
     labels:
       ofelia.enabled: "true"
-      ofelia.job-exec.clickhouse.schedule: "@daily"
+      ofelia.job-exec.clickhouse.schedule: "@weekly"
       ofelia.job-exec.clickhouse.command: >
         bash -c "clickhouse-client -q \"use events; BACKUP TABLE otel_traces TO S3('https://sos-ch-dk-2.exo.io/arm-backup/events-prod/$(date +%Y-%m-%d_%H-%M)/', '${S3_KEY}', '${S3_SECRET}')\" && wget --timeout=10 --tries=6 -O /dev/null https://pulse.updown.io/${UPDOWN_BACKUP_PULSE}"
 
