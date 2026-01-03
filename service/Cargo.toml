@@ -11,7 +11,7 @@ axum = "0.7.6"
 axum-extra = { version = "0.9.4", features = ["cookie"] }
 tracing-subscriber = "0.3.18"
 tracing = "0.1.40"
-tower-http = { version = "0.6.1", features = ["trace"] }
+tower-http = { version = "0.6.1", features = ["trace", "cors"] }
 mime_guess = "2.0.5"
 uuid = { version = "1.10.0", features = ["v4"] }
 jiff = "0.1.13"
