@@ -20,7 +20,13 @@ pub struct DashboardResponse {
 
 #[tracing::instrument(skip_all)]
 pub async fn get_dashboard_data(_headers: HeaderMap) -> Result<impl IntoResponse, AppError> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| {
+            error!(message = "Failed to create reqwest client", %e);
+            AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
 
     let Some((_, ch_user)) = env::vars().find(|v| v.0.eq("CLICKHOUSE_USER")) else {
         error!("CLICKHOUSE_USER not in environment");
@@ -73,7 +79,7 @@ pub async fn get_dashboard_data(_headers: HeaderMap) -> Result<impl IntoResponse
     ";
 
     let co2_response = client
-        .post("http://localhost:8123/")
+        .post("http://clickhouse:8123/")
         .body(co2_query)
         .header("X-ClickHouse-Format", "JSON")
         .header("X-ClickHouse-User", &ch_user)
@@ -86,7 +92,7 @@ pub async fn get_dashboard_data(_headers: HeaderMap) -> Result<impl IntoResponse
         })?;
 
     let co2_latest_response = client
-        .post("http://localhost:8123/")
+        .post("http://clickhouse:8123/")
         .body(co2_latest_query)
         .header("X-ClickHouse-Format", "JSON")
         .header("X-ClickHouse-User", &ch_user)
@@ -99,7 +105,7 @@ pub async fn get_dashboard_data(_headers: HeaderMap) -> Result<impl IntoResponse
         })?;
 
     let hum_latest_response = client
-        .post("http://localhost:8123/")
+        .post("http://clickhouse:8123/")
         .body(hum_latest_query)
         .header("X-ClickHouse-Format", "JSON")
         .header("X-ClickHouse-User", &ch_user)
