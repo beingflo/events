@@ -76,10 +76,10 @@ pub async fn main() -> Result<(), AppError> {
         .route("/api/data", post(upload_data))
         .route(
             "/api/dashboard",
-            get(get_dashboard_data).layer(
-                CorsLayer::new()
-                    .allow_origin("https://marending.dev".parse::<HeaderValue>().unwrap()),
-            ),
+            get(get_dashboard_data).layer(CorsLayer::new().allow_origin([
+                "https://marending.dev".parse::<HeaderValue>().unwrap(),
+                "http://localhost:4321".parse::<HeaderValue>().unwrap(),
+            ])),
         )
         .route("/api/gps/:bucket/:token", post(upload_gps_data))
         .layer(
