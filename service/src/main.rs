@@ -4,7 +4,7 @@ use axum::{
     Router,
     body::Body,
     http::{Request, Response, StatusCode},
-    routing::post,
+    routing::{get, post},
 };
 use error::AppError;
 use opentelemetry::{global, trace::TracerProvider};
@@ -16,8 +16,9 @@ use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
-use crate::{data::upload_data, gps::upload_gps_data};
+use crate::{dashboard::get_dashboard_data, data::upload_data, gps::upload_gps_data};
 
+mod dashboard;
 mod data;
 mod error;
 mod gps;
@@ -73,6 +74,7 @@ pub async fn main() -> Result<(), AppError> {
 
     let app = Router::new()
         .route("/api/data", post(upload_data))
+        .route("/api/dashboard", get(get_dashboard_data))
         .route("/api/gps/:bucket/:token", post(upload_gps_data))
         .layer(
             TraceLayer::new_for_http()
