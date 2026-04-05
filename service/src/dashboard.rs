@@ -43,7 +43,7 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
         JSONHas(SpanAttributes['payload'], 'co2')
         AND SpanName = 'data'
         AND (
-            Timestamp >= now() - INTERVAL 3 DAYS
+            Timestamp >= now() - INTERVAL 6 HOURS
         )
     GROUP BY
         time
