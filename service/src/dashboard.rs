@@ -83,7 +83,7 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
     ";
 
     let co2_response = client
-        .post("http://localhost:8123/")
+        .post(&format!("http://{ch_host}:8123/"))
         .body(co2_query)
         .header("X-ClickHouse-Format", "JSON")
         .header("X-ClickHouse-User", &ch_user)
@@ -96,7 +96,7 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
         })?;
 
     let co2_latest_response = client
-        .post("http://localhost:8123/")
+        .post(&format!("http://{ch_host}:8123/"))
         .body(co2_latest_query)
         .header("X-ClickHouse-Format", "JSON")
         .header("X-ClickHouse-User", &ch_user)
@@ -109,7 +109,7 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
         })?;
 
     let hum_latest_response = client
-        .post("http://localhost:8123/")
+        .post(&format!("http://{ch_host}:8123/"))
         .body(hum_latest_query)
         .header("X-ClickHouse-Format", "JSON")
         .header("X-ClickHouse-User", &ch_user)
