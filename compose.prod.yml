@@ -1,6 +1,6 @@
 services:
   events:
-    image: "ghcr.io/beingflo/events:0.1.11"
+    image: "ghcr.io/beingflo/events:0.1.12"
     container_name: events
     env_file: ".env.prod"
     restart: unless-stopped
