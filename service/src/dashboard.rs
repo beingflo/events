@@ -28,6 +28,10 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
             AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
 
+    let Some((_, ch_host)) = env::vars().find(|v| v.0.eq("CLICKHOUSE_HOST")) else {
+        error!("CLICKHOUSE_HOST not in environment");
+        return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
+    };
     let Some((_, ch_user)) = env::vars().find(|v| v.0.eq("CLICKHOUSE_USER")) else {
         error!("CLICKHOUSE_USER not in environment");
         return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
