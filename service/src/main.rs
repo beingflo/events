@@ -3,21 +3,22 @@ use std::{env, process::abort, time::Duration};
 use axum::{
     Router,
     body::Body,
-    http::{Request, Response, StatusCode},
-    routing::post,
+    http::{HeaderValue, Request, Response, StatusCode},
+    routing::{get, post},
 };
 use error::AppError;
 use opentelemetry::{global, trace::TracerProvider};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use tokio::signal;
-use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
+use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::{Span, error, info, warn};
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
-use crate::{data::upload_data, gps::upload_gps_data};
+use crate::{dashboard::get_dashboard, data::upload_data, gps::upload_gps_data};
 
+mod dashboard;
 mod data;
 mod error;
 mod gps;
@@ -74,6 +75,13 @@ pub async fn main() -> Result<(), AppError> {
     let app = Router::new()
         .route("/api/data", post(upload_data))
         .route("/api/gps/:bucket/:token", post(upload_gps_data))
+        .route(
+            "/api/dashboard",
+            get(get_dashboard).layer(CorsLayer::new().allow_origin([
+                "https://marending.dev".parse::<HeaderValue>().unwrap(),
+                "http://localhost:4321".parse::<HeaderValue>().unwrap(),
+            ])),
+        )
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|_request: &Request<Body>| {
