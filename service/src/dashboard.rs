@@ -90,7 +90,10 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
     })?;
 
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "image/png".parse().unwrap());
+    headers.insert(
+        header::CONTENT_TYPE,
+        "application/octet-stream".parse().unwrap(),
+    );
 
     Ok((StatusCode::OK, headers, png_bytes))
 }
@@ -117,10 +120,10 @@ fn render_chart(data: &[(f64, f64)]) -> Result<Vec<u8>, Box<dyn std::error::Erro
     const W: u32 = 792;
     const H: u32 = 272;
 
-    let mut buf = vec![0u8; (W * H * 3) as usize];
+    let mut rgb_buf = vec![0u8; (W * H * 3) as usize];
 
     {
-        let root = BitMapBackend::with_buffer(&mut buf, (W, H)).into_drawing_area();
+        let root = BitMapBackend::with_buffer(&mut rgb_buf, (W, H)).into_drawing_area();
         root.fill(&WHITE)?;
 
         let x_min = data.first().map(|d| d.0).unwrap_or(0.0);
@@ -147,12 +150,23 @@ fn render_chart(data: &[(f64, f64)]) -> Result<Vec<u8>, Box<dyn std::error::Erro
         root.present()?;
     }
 
-    // Encode raw RGB buffer to PNG
-    let mut png_bytes: Vec<u8> = Vec::new();
-    {
-        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
-        image::ImageEncoder::write_image(encoder, &buf, W, H, image::ExtendedColorType::Rgb8)?;
+    // Convert RGB to 1-bit-per-pixel, MSB first, row-major
+    let row_bytes = (W as usize + 7) / 8;
+    let mut mono_buf = vec![0u8; row_bytes * H as usize];
+
+    for y in 0..H as usize {
+        for x in 0..W as usize {
+            let rgb_idx = (y * W as usize + x) * 3;
+            let r = rgb_buf[rgb_idx] as u16;
+            let g = rgb_buf[rgb_idx + 1] as u16;
+            let b = rgb_buf[rgb_idx + 2] as u16;
+            let luminance = (r + g + b) / 3;
+            // White = 1, Black = 0
+            if luminance >= 128 {
+                mono_buf[y * row_bytes + x / 8] |= 0x80 >> (x % 8);
+            }
+        }
     }
 
-    Ok(png_bytes)
+    Ok(mono_buf)
 }

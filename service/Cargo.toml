@@ -27,4 +27,3 @@ opentelemetry-stdout = "0.30.0"
 opentelemetry-semantic-conventions = "0.30.0"
 reqwest = { version = "0.13.1", features = ["json"] }
 plotters = "0.3"
-image = "0.25"
