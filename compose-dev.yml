@@ -71,6 +71,22 @@ services:
       clickhouse:
         condition: service_healthy
 
+  events:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: events
+    env_file: ".env"
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
+    ports:
+      - 4000:3000
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
 volumes:
   clickhouse-db:
     name: "clickhouse-db"
