@@ -94,7 +94,8 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
         time ASC;
     ");
 
-    let temperature_query = format!("
+    let temperature_query = format!(
+        "
     SELECT
         JSONExtractFloat(SpanAttributes['payload'], 'temperature') as temperature
     FROM
@@ -106,7 +107,8 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
         AND Timestamp >= {max_ts_subquery} - INTERVAL 6 HOURS
     ORDER BY Timestamp DESC
     LIMIT 1;
-    ");
+    "
+    );
 
     let pressure_query = format!("
     SELECT
@@ -126,7 +128,8 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     LIMIT 1;
     ");
 
-    let humidity_query = format!("
+    let humidity_query = format!(
+        "
     SELECT
         avg(JSONExtractFloat(SpanAttributes['payload'], 'humidity')) as humidity
     FROM
@@ -136,10 +139,12 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
         AND SpanName = 'data'
         AND SpanAttributes['bucket'] = 'humidity-laundry-room'
         AND Timestamp >= {max_ts_subquery} - INTERVAL 1 HOUR;
-    ");
+    "
+    );
 
     let co2_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &co2_query).await?;
-    let temperature_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &temperature_query).await?;
+    let temperature_data =
+        ch_query(&client, &ch_url, &ch_user, &ch_password, &temperature_query).await?;
     let pressure_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &pressure_query).await?;
     let humidity_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_query).await?;
 
@@ -278,8 +283,14 @@ fn render_chart_rgb(
         info_area.draw(&PathElement::new(vec![(0, 0), (0, info_h)], &BLACK))?;
 
         // Horizontal separators between scalar cells
-        info_area.draw(&PathElement::new(vec![(0, cell_h), (info_w, cell_h)], &BLACK))?;
-        info_area.draw(&PathElement::new(vec![(0, cell_h * 2), (info_w, cell_h * 2)], &BLACK))?;
+        info_area.draw(&PathElement::new(
+            vec![(0, cell_h), (info_w, cell_h)],
+            &BLACK,
+        ))?;
+        info_area.draw(&PathElement::new(
+            vec![(0, cell_h * 2), (info_w, cell_h * 2)],
+            &BLACK,
+        ))?;
 
         let label_style = ("sans-serif", 14).into_font().color(&BLACK);
         let value_style = ("sans-serif", 24).into_font().color(&BLACK);
