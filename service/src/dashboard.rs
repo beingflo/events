@@ -5,6 +5,7 @@ use axum::{
     response::IntoResponse,
 };
 use plotters::prelude::*;
+use plotters::style::text_anchor::{HPos, Pos, VPos};
 use serde_json::Value;
 use tracing::error;
 
@@ -142,9 +143,9 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     let pressure_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &pressure_query).await?;
     let humidity_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_query).await?;
 
-    let _temperature: Option<f64> = parse_scalar(&temperature_data, "temperature");
-    let _pressure: Option<f64> = parse_scalar(&pressure_data, "pressure");
-    let _humidity: Option<f64> = parse_scalar(&humidity_data, "humidity");
+    let temperature: Option<f64> = parse_scalar(&temperature_data, "temperature");
+    let pressure: Option<f64> = parse_scalar(&pressure_data, "pressure");
+    let humidity: Option<f64> = parse_scalar(&humidity_data, "humidity");
 
     let data_points = parse_co2_data(&co2_data);
     if data_points.is_empty() {
@@ -158,7 +159,7 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
         .map(|v| v.contains("image/png") || v.contains("image/*") || v.contains("*/*"))
         .unwrap_or(false);
 
-    let rgb_buf = render_chart_rgb(&data_points).map_err(|e| {
+    let rgb_buf = render_chart_rgb(&data_points, temperature, pressure, humidity).map_err(|e| {
         error!(message = "Failed to render chart", %e);
         AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
@@ -185,54 +186,132 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     }
 }
 
-fn parse_co2_data(json: &Value) -> Vec<(f64, f64)> {
+/// Returns (time_str, co2_ppm) pairs
+fn parse_co2_data(json: &Value) -> Vec<(String, f64)> {
     let Some(rows) = json.get("data").and_then(|d| d.as_array()) else {
         return vec![];
     };
 
     rows.iter()
         .filter_map(|row| {
+            let time_str = row.get("time")?.as_str()?.to_string();
             let co2_val = row.get("co2_ppm")?;
             let co2: f64 = co2_val
                 .as_f64()
                 .or_else(|| co2_val.as_str()?.parse().ok())?;
-            Some(co2)
+            Some((time_str, co2))
         })
-        .enumerate()
-        .map(|(i, co2)| (i as f64, co2))
         .collect()
 }
 
 const W: u32 = 792;
 const H: u32 = 272;
 
-fn render_chart_rgb(data: &[(f64, f64)]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn render_chart_rgb(
+    data: &[(String, f64)],
+    temperature: Option<f64>,
+    pressure: Option<f64>,
+    humidity: Option<f64>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut rgb_buf = vec![0u8; (W * H * 3) as usize];
+
+    // Build indexed data for plotting, and a lookup from index to time string
+    let indexed: Vec<(f64, f64)> = data
+        .iter()
+        .enumerate()
+        .map(|(i, (_, co2))| (i as f64, *co2))
+        .collect();
+    let n = data.len();
 
     {
         let root = BitMapBackend::with_buffer(&mut rgb_buf, (W, H)).into_drawing_area();
         root.fill(&WHITE)?;
 
-        let x_min = data.first().map(|d| d.0).unwrap_or(0.0);
-        let x_max = data.last().map(|d| d.0).unwrap_or(1.0);
+        let chart_width = (W * 3 / 4) as i32;
+        let (chart_area, info_area) = root.split_horizontally(chart_width);
+
+        let x_min = 0.0f64;
+        let x_max = (n.saturating_sub(1)) as f64;
         let y_min = data.iter().map(|d| d.1).fold(f64::INFINITY, f64::min) - 50.0;
         let y_max = data.iter().map(|d| d.1).fold(f64::NEG_INFINITY, f64::max) + 50.0;
 
-        let mut chart = ChartBuilder::on(&root)
+        let mut chart = ChartBuilder::on(&chart_area)
             .margin(10)
             .x_label_area_size(20)
             .y_label_area_size(40)
             .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
 
+        // Extract HH:MM from timestamp strings for x-axis labels
+        let time_labels: Vec<String> = data
+            .iter()
+            .map(|(ts, _)| {
+                // Timestamp format: "2026-04-02 19:42:10.000"
+                ts.split(' ')
+                    .nth(1)
+                    .and_then(|t| t.get(..5))
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect();
+
         chart
             .configure_mesh()
             .disable_x_mesh()
             .disable_y_mesh()
-            .x_labels(0)
+            .x_labels(6)
+            .x_label_formatter(&|x| {
+                let idx = *x as usize;
+                time_labels.get(idx).cloned().unwrap_or_default()
+            })
+            .x_label_style(("sans-serif", 14).into_font().color(&BLACK))
             .y_label_style(("sans-serif", 14).into_font().color(&BLACK))
             .draw()?;
 
-        chart.draw_series(LineSeries::new(data.iter().copied(), &BLACK))?;
+        chart.draw_series(LineSeries::new(indexed.into_iter(), &BLACK))?;
+
+        // Vertical separator between chart and info panel
+        let info_dim = info_area.dim_in_pixel();
+        let info_w = info_dim.0 as i32;
+        let info_h = info_dim.1 as i32;
+        let cell_h = info_h / 3;
+
+        info_area.draw(&PathElement::new(vec![(0, 0), (0, info_h)], &BLACK))?;
+
+        // Horizontal separators between scalar cells
+        info_area.draw(&PathElement::new(vec![(0, cell_h), (info_w, cell_h)], &BLACK))?;
+        info_area.draw(&PathElement::new(vec![(0, cell_h * 2), (info_w, cell_h * 2)], &BLACK))?;
+
+        let label_style = ("sans-serif", 14).into_font().color(&BLACK);
+        let value_style = ("sans-serif", 24).into_font().color(&BLACK);
+
+        let scalars: [(&str, Option<f64>, &str); 3] = [
+            ("Temperature", temperature, "C"),
+            ("Pressure", pressure, "hPa"),
+            ("Humidity Laundry", humidity, "%"),
+        ];
+
+        for (i, (label, val, unit)) in scalars.iter().enumerate() {
+            let y_offset = cell_h * i as i32;
+            let center_x = info_w / 2;
+
+            // Label centered at top of cell
+            info_area.draw_text(
+                label,
+                &label_style.pos(Pos::new(HPos::Center, VPos::Top)),
+                (center_x, y_offset + 8),
+            )?;
+
+            // Value centered in remaining space
+            let value_text = match val {
+                Some(v) => format!("{v:.1} {unit}"),
+                None => "--".to_string(),
+            };
+            info_area.draw_text(
+                &value_text,
+                &value_style.pos(Pos::new(HPos::Center, VPos::Center)),
+                (center_x, y_offset + cell_h / 2 + 8),
+            )?;
+        }
 
         root.present()?;
     }
