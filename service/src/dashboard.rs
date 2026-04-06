@@ -263,16 +263,20 @@ fn render_chart_rgb(
             .y_label_area_size(40)
             .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
 
-        // Extract HH:MM from timestamp strings for x-axis labels
+        // Extract HH:MM from timestamp strings, converted to Zurich timezone
+        let zurich = jiff::tz::TimeZone::get("Europe/Zurich").expect("valid tz");
         let time_labels: Vec<String> = data
             .iter()
             .map(|(ts, _)| {
-                // Timestamp format: "2026-04-02 19:42:10.000"
-                ts.split(' ')
-                    .nth(1)
-                    .and_then(|t| t.get(..5))
-                    .unwrap_or("")
-                    .to_string()
+                // Timestamp format: "2026-04-02 19:42:10.000" (UTC)
+                // Parse as UTC, convert to Zurich, format as HH:MM
+                let formatted = ts
+                    .parse::<jiff::civil::DateTime>()
+                    .ok()
+                    .and_then(|dt| dt.to_zoned(jiff::tz::TimeZone::UTC).ok())
+                    .map(|zdt| zdt.with_time_zone(zurich.clone()))
+                    .map(|zdt| format!("{:02}:{:02}", zdt.hour(), zdt.minute()));
+                formatted.unwrap_or_default()
             })
             .collect();
 
