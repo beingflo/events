@@ -271,8 +271,8 @@ fn render_chart_rgb(
                 let idx = *x as usize;
                 time_labels.get(idx).cloned().unwrap_or_default()
             })
-            .x_label_style(("sans-serif bold", 16).into_font().color(&BLACK))
-            .y_label_style(("sans-serif bold", 16).into_font().color(&BLACK))
+            .x_label_style(FontDesc::new(FontFamily::SansSerif, 16.0, FontStyle::Bold).color(&BLACK))
+            .y_label_style(FontDesc::new(FontFamily::SansSerif, 16.0, FontStyle::Bold).color(&BLACK))
             .draw()?;
 
         chart.draw_series(LineSeries::new(
@@ -283,8 +283,7 @@ fn render_chart_rgb(
         let chart_dim = chart_area.dim_in_pixel();
         chart_area.draw_text(
             "CO2 Living Room [ppm]",
-            &("sans-serif bold", 14)
-                .into_font()
+            &FontDesc::new(FontFamily::SansSerif, 14.0, FontStyle::Bold)
                 .color(&BLACK)
                 .pos(Pos::new(HPos::Right, VPos::Top)),
             (chart_dim.0 as i32 - 12, 12),
@@ -304,8 +303,8 @@ fn render_chart_rgb(
             ))?;
         }
 
-        let label_style = ("sans-serif bold", 16).into_font().color(&BLACK);
-        let value_style = ("sans-serif bold", 24).into_font().color(&BLACK);
+        let label_style = FontDesc::new(FontFamily::SansSerif, 16.0, FontStyle::Bold).color(&BLACK);
+        let value_style = FontDesc::new(FontFamily::SansSerif, 24.0, FontStyle::Bold).color(&BLACK);
 
         let scalars: [(&str, Option<f64>, &str); 4] = [
             ("Temperature", temperature, "C"),
