@@ -11,7 +11,7 @@ use tracing::error;
 use crate::error::AppError;
 
 #[tracing::instrument(skip_all)]
-pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, AppError> {
+pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, AppError> {
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
@@ -43,7 +43,7 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
         JSONHas(SpanAttributes['payload'], 'co2')
         AND SpanName = 'data'
         AND (
-            Timestamp >= now() - INTERVAL 6 HOURS
+            Timestamp >= (SELECT max(Timestamp) FROM events.otel_traces WHERE SpanName = 'data') - INTERVAL 6 HOURS
         )
     GROUP BY
         time
@@ -84,7 +84,13 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
         return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
-    let png_bytes = render_chart(&data_points).map_err(|e| {
+    let wants_png = req_headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("image/png") || v.contains("image/*") || v.contains("*/*"))
+        .unwrap_or(false);
+
+    let rgb_buf = render_chart_rgb(&data_points).map_err(|e| {
         error!(message = "Failed to render chart", %e);
         AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
@@ -92,13 +98,23 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
     let refresh_seconds = env::var("DASHBOARD_REFRESH_SECONDS").unwrap_or_else(|_| "120".into());
 
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        "application/octet-stream".parse().unwrap(),
-    );
     headers.insert("X-Refresh-Seconds", refresh_seconds.parse().unwrap());
 
-    Ok((StatusCode::OK, headers, png_bytes))
+    if wants_png {
+        let png_bytes = encode_png(&rgb_buf).map_err(|e| {
+            error!(message = "Failed to encode PNG", %e);
+            AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+        headers.insert(header::CONTENT_TYPE, "image/png".parse().unwrap());
+        Ok((StatusCode::OK, headers, png_bytes))
+    } else {
+        let mono_buf = rgb_to_mono(&rgb_buf);
+        headers.insert(
+            header::CONTENT_TYPE,
+            "application/octet-stream".parse().unwrap(),
+        );
+        Ok((StatusCode::OK, headers, mono_buf))
+    }
 }
 
 fn parse_co2_data(json: &Value) -> Vec<(f64, f64)> {
@@ -119,10 +135,10 @@ fn parse_co2_data(json: &Value) -> Vec<(f64, f64)> {
         .collect()
 }
 
-fn render_chart(data: &[(f64, f64)]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    const W: u32 = 792;
-    const H: u32 = 272;
+const W: u32 = 792;
+const H: u32 = 272;
 
+fn render_chart_rgb(data: &[(f64, f64)]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut rgb_buf = vec![0u8; (W * H * 3) as usize];
 
     {
@@ -153,7 +169,17 @@ fn render_chart(data: &[(f64, f64)]) -> Result<Vec<u8>, Box<dyn std::error::Erro
         root.present()?;
     }
 
-    // Convert RGB to 1-bit-per-pixel, MSB first, row-major
+    Ok(rgb_buf)
+}
+
+fn encode_png(rgb_buf: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut png_bytes: Vec<u8> = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+    image::ImageEncoder::write_image(encoder, rgb_buf, W, H, image::ExtendedColorType::Rgb8)?;
+    Ok(png_bytes)
+}
+
+fn rgb_to_mono(rgb_buf: &[u8]) -> Vec<u8> {
     let row_bytes = (W as usize + 7) / 8;
     let mut mono_buf = vec![0u8; row_bytes * H as usize];
 
@@ -164,12 +190,11 @@ fn render_chart(data: &[(f64, f64)]) -> Result<Vec<u8>, Box<dyn std::error::Erro
             let g = rgb_buf[rgb_idx + 1] as u16;
             let b = rgb_buf[rgb_idx + 2] as u16;
             let luminance = (r + g + b) / 3;
-            // White = 1, Black = 0
             if luminance >= 128 {
                 mono_buf[y * row_bytes + x / 8] |= 0x80 >> (x % 8);
             }
         }
     }
 
-    Ok(mono_buf)
+    mono_buf
 }
