@@ -293,16 +293,19 @@ fn render_chart_rgb(
                 let idx = *x as usize;
                 time_labels.get(idx).cloned().unwrap_or_default()
             })
-            .x_label_style(("sans-serif", 14 * SCALE).into_font().color(&BLACK))
-            .y_label_style(("sans-serif", 14 * SCALE).into_font().color(&BLACK))
+            .x_label_style(("sans-serif bold", 14 * SCALE).into_font().color(&BLACK))
+            .y_label_style(("sans-serif bold", 14 * SCALE).into_font().color(&BLACK))
             .draw()?;
 
-        chart.draw_series(LineSeries::new(indexed.into_iter(), &BLACK))?;
+        chart.draw_series(LineSeries::new(
+            indexed.into_iter(),
+            ShapeStyle::from(&BLACK).stroke_width(2 * SCALE),
+        ))?;
 
         let chart_dim = chart_area.dim_in_pixel();
         chart_area.draw_text(
             "CO2 Living Room [ppm]",
-            &("sans-serif", 12 * SCALE)
+            &("sans-serif bold", 12 * SCALE)
                 .into_font()
                 .color(&BLACK)
                 .pos(Pos::new(HPos::Right, VPos::Top)),
@@ -315,16 +318,17 @@ fn render_chart_rgb(
         let info_h = info_dim.1 as i32;
         let cell_h = info_h / 4;
 
-        info_area.draw(&PathElement::new(vec![(0, 0), (0, info_h)], &BLACK))?;
+        let sep_style = ShapeStyle::from(&BLACK).stroke_width(SCALE);
+        info_area.draw(&PathElement::new(vec![(0, 0), (0, info_h)], sep_style))?;
         for row in 1..4 {
             info_area.draw(&PathElement::new(
                 vec![(0, cell_h * row), (info_w, cell_h * row)],
-                &BLACK,
+                sep_style,
             ))?;
         }
 
-        let label_style = ("sans-serif", 12 * SCALE).into_font().color(&BLACK);
-        let value_style = ("sans-serif", 20 * SCALE).into_font().color(&BLACK);
+        let label_style = ("sans-serif bold", 14 * SCALE).into_font().color(&BLACK);
+        let value_style = ("sans-serif bold", 22 * SCALE).into_font().color(&BLACK);
 
         let scalars: [(&str, Option<f64>, &str); 4] = [
             ("Temperature", temperature, "C"),
