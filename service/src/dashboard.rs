@@ -10,6 +10,47 @@ use tracing::error;
 
 use crate::error::AppError;
 
+async fn ch_query(
+    client: &reqwest::Client,
+    url: &str,
+    user: &str,
+    password: &str,
+    query: &str,
+) -> Result<Value, AppError> {
+    let response = client
+        .post(url)
+        .body(query.to_owned())
+        .header("X-ClickHouse-Format", "JSON")
+        .header("X-ClickHouse-User", user)
+        .header("X-ClickHouse-Key", password)
+        .send()
+        .await
+        .map_err(|e| {
+            error!(message = "Failed to fetch data from Clickhouse", %e);
+            AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+
+    if !response.status().is_success() {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        error!(message = "Clickhouse responded with error", error_text);
+        return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|_| AppError::Status(StatusCode::INTERNAL_SERVER_ERROR))
+}
+
+fn parse_scalar(json: &Value, field: &str) -> Option<f64> {
+    let row = json.get("data")?.as_array()?.first()?;
+    let val = row.get(field)?;
+    val.as_f64().or_else(|| val.as_str()?.parse().ok())
+}
+
 #[tracing::instrument(skip_all)]
 pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, AppError> {
     let client = reqwest::Client::builder()
@@ -33,7 +74,10 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
         return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
     };
 
-    let co2_query = "
+    let ch_url = format!("http://{ch_host}:8123/");
+    let max_ts_subquery = "(SELECT max(Timestamp) FROM events.otel_traces WHERE SpanName = 'data')";
+
+    let co2_query = format!("
     SELECT
         toStartOfInterval(parseDateTime64BestEffort(SpanAttributes['timestamp']), toIntervalMillisecond(10000)) as time,
         avg(JSONExtractFloat(SpanAttributes['payload'], 'co2')) as co2_ppm
@@ -42,41 +86,65 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     WHERE
         JSONHas(SpanAttributes['payload'], 'co2')
         AND SpanName = 'data'
-        AND (
-            Timestamp >= (SELECT max(Timestamp) FROM events.otel_traces WHERE SpanName = 'data') - INTERVAL 6 HOURS
-        )
+        AND Timestamp >= {max_ts_subquery} - INTERVAL 6 HOURS
     GROUP BY
         time
     ORDER BY
         time ASC;
-    ";
+    ");
 
-    let co2_response = client
-        .post(format!("http://{ch_host}:8123/"))
-        .body(co2_query)
-        .header("X-ClickHouse-Format", "JSON")
-        .header("X-ClickHouse-User", &ch_user)
-        .header("X-ClickHouse-Key", &ch_password)
-        .send()
-        .await
-        .map_err(|e| {
-            error!(message = "Failed to fetch data from Clickhouse", %e);
-            AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
-        })?;
+    let temperature_query = format!("
+    SELECT
+        JSONExtractFloat(SpanAttributes['payload'], 'temperature') as temperature
+    FROM
+        events.otel_traces
+    WHERE
+        JSONHas(SpanAttributes['payload'], 'temperature')
+        AND SpanName = 'data'
+        AND SpanAttributes['bucket'] = 'co2-sensor-living-room'
+        AND Timestamp >= {max_ts_subquery} - INTERVAL 6 HOURS
+    ORDER BY Timestamp DESC
+    LIMIT 1;
+    ");
 
-    if !co2_response.status().is_success() {
-        let error_text = co2_response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-        error!(message = "Clickhouse responded with error", error_text);
-        return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
-    }
+    let pressure_query = format!("
+    SELECT
+        pow(
+            (1 - ((0.0065 * 410) / (JSONExtractFloat(SpanAttributes['payload'], 'temperature') + 273.15 + 0.0065 * 400))),
+            -5.257
+        ) * JSONExtractFloat(SpanAttributes['payload'], 'absolute_pressure') / 100 as pressure
+    FROM
+        events.otel_traces
+    WHERE
+        JSONHas(SpanAttributes['payload'], 'absolute_pressure')
+        AND JSONHas(SpanAttributes['payload'], 'temperature')
+        AND SpanName = 'data'
+        AND SpanAttributes['bucket'] = 'brightness-barometer-living-room'
+        AND Timestamp >= {max_ts_subquery} - INTERVAL 6 HOURS
+    ORDER BY Timestamp DESC
+    LIMIT 1;
+    ");
 
-    let co2_data: Value = co2_response
-        .json()
-        .await
-        .map_err(|_| AppError::Status(StatusCode::INTERNAL_SERVER_ERROR))?;
+    let humidity_query = format!("
+    SELECT
+        avg(JSONExtractFloat(SpanAttributes['payload'], 'humidity')) as humidity
+    FROM
+        events.otel_traces
+    WHERE
+        JSONHas(SpanAttributes['payload'], 'humidity')
+        AND SpanName = 'data'
+        AND SpanAttributes['bucket'] = 'humidity-laundry-room'
+        AND Timestamp >= {max_ts_subquery} - INTERVAL 1 HOUR;
+    ");
+
+    let co2_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &co2_query).await?;
+    let temperature_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &temperature_query).await?;
+    let pressure_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &pressure_query).await?;
+    let humidity_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_query).await?;
+
+    let _temperature: Option<f64> = parse_scalar(&temperature_data, "temperature");
+    let _pressure: Option<f64> = parse_scalar(&pressure_data, "pressure");
+    let _humidity: Option<f64> = parse_scalar(&humidity_data, "humidity");
 
     let data_points = parse_co2_data(&co2_data);
     if data_points.is_empty() {
