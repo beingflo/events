@@ -110,24 +110,6 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     "
     );
 
-    let pressure_query = format!("
-    SELECT
-        pow(
-            (1 - ((0.0065 * 410) / (JSONExtractFloat(SpanAttributes['payload'], 'temperature') + 273.15 + 0.0065 * 400))),
-            -5.257
-        ) * JSONExtractFloat(SpanAttributes['payload'], 'absolute_pressure') / 100 as pressure
-    FROM
-        events.otel_traces
-    WHERE
-        JSONHas(SpanAttributes['payload'], 'absolute_pressure')
-        AND JSONHas(SpanAttributes['payload'], 'temperature')
-        AND SpanName = 'data'
-        AND SpanAttributes['bucket'] = 'brightness-barometer-living-room'
-        AND Timestamp >= {max_ts_subquery} - INTERVAL 6 HOURS
-    ORDER BY Timestamp DESC
-    LIMIT 1;
-    ");
-
     let humidity_laundry_query = format!(
         "
     SELECT
@@ -159,12 +141,10 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     let co2_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &co2_query).await?;
     let temperature_data =
         ch_query(&client, &ch_url, &ch_user, &ch_password, &temperature_query).await?;
-    let pressure_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &pressure_query).await?;
     let humidity_laundry_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_laundry_query).await?;
     let humidity_living_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_living_query).await?;
 
     let temperature: Option<f64> = parse_scalar(&temperature_data, "temperature");
-    let pressure: Option<f64> = parse_scalar(&pressure_data, "pressure");
     let humidity_laundry: Option<f64> = parse_scalar(&humidity_laundry_data, "humidity");
     let humidity_living: Option<f64> = parse_scalar(&humidity_living_data, "humidity_avg");
 
@@ -180,7 +160,9 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
         .map(|v| v.contains("image/png") || v.contains("image/*") || v.contains("*/*"))
         .unwrap_or(false);
 
-    let rgb_buf = render_chart_rgb(&data_points, temperature, pressure, humidity_laundry, humidity_living).map_err(|e| {
+    let latest_co2: Option<f64> = data_points.last().map(|(_, co2)| *co2);
+
+    let rgb_buf = render_chart_rgb(&data_points, temperature, latest_co2, humidity_laundry, humidity_living).map_err(|e| {
         error!(message = "Failed to render chart", %e);
         AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
@@ -231,7 +213,7 @@ const H: u32 = 272;
 fn render_chart_rgb(
     data: &[(String, f64)],
     temperature: Option<f64>,
-    pressure: Option<f64>,
+    co2_latest: Option<f64>,
     humidity_laundry: Option<f64>,
     humidity_living: Option<f64>,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -263,8 +245,8 @@ fn render_chart_rgb(
 
         let mut chart = ChartBuilder::on(&chart_area)
             .margin(10 * SCALE)
-            .x_label_area_size(20 * SCALE)
-            .y_label_area_size(40 * SCALE)
+            .x_label_area_size(24 * SCALE)
+            .y_label_area_size(48 * SCALE)
             .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
 
         // Extract HH:MM from timestamp strings, converted to Zurich timezone
@@ -293,19 +275,19 @@ fn render_chart_rgb(
                 let idx = *x as usize;
                 time_labels.get(idx).cloned().unwrap_or_default()
             })
-            .x_label_style(("sans-serif bold", 14 * SCALE).into_font().color(&BLACK))
-            .y_label_style(("sans-serif bold", 14 * SCALE).into_font().color(&BLACK))
+            .x_label_style(("sans-serif bold", 16 * SCALE).into_font().color(&BLACK))
+            .y_label_style(("sans-serif bold", 16 * SCALE).into_font().color(&BLACK))
             .draw()?;
 
         chart.draw_series(LineSeries::new(
             indexed.into_iter(),
-            ShapeStyle::from(&BLACK).stroke_width(2 * SCALE),
+            ShapeStyle::from(&BLACK).stroke_width(3),
         ))?;
 
         let chart_dim = chart_area.dim_in_pixel();
         chart_area.draw_text(
             "CO2 Living Room [ppm]",
-            &("sans-serif bold", 12 * SCALE)
+            &("sans-serif bold", 14 * SCALE)
                 .into_font()
                 .color(&BLACK)
                 .pos(Pos::new(HPos::Right, VPos::Top)),
@@ -327,12 +309,12 @@ fn render_chart_rgb(
             ))?;
         }
 
-        let label_style = ("sans-serif bold", 14 * SCALE).into_font().color(&BLACK);
-        let value_style = ("sans-serif bold", 22 * SCALE).into_font().color(&BLACK);
+        let label_style = ("sans-serif bold", 16 * SCALE).into_font().color(&BLACK);
+        let value_style = ("sans-serif bold", 24 * SCALE).into_font().color(&BLACK);
 
         let scalars: [(&str, Option<f64>, &str); 4] = [
             ("Temperature", temperature, "C"),
-            ("Pressure", pressure, "hPa"),
+            ("CO2", co2_latest, "ppm"),
             ("Hum. Laundry", humidity_laundry, "%"),
             ("Hum. Living", humidity_living, "%"),
         ];
