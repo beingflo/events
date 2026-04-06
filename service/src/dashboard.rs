@@ -235,7 +235,11 @@ fn render_chart_rgb(
     humidity_laundry: Option<f64>,
     humidity_living: Option<f64>,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut rgb_buf = vec![0u8; (W * H * 3) as usize];
+    // Render at 2x for supersampled anti-aliasing
+    const SCALE: u32 = 2;
+    let sw = W * SCALE;
+    let sh = H * SCALE;
+    let mut hi_buf = vec![0u8; (sw * sh * 3) as usize];
 
     // Build indexed data for plotting, and a lookup from index to time string
     let indexed: Vec<(f64, f64)> = data
@@ -246,10 +250,10 @@ fn render_chart_rgb(
     let n = data.len();
 
     {
-        let root = BitMapBackend::with_buffer(&mut rgb_buf, (W, H)).into_drawing_area();
+        let root = BitMapBackend::with_buffer(&mut hi_buf, (sw, sh)).into_drawing_area();
         root.fill(&WHITE)?;
 
-        let chart_width = (W * 4 / 5) as i32;
+        let chart_width = (sw * 4 / 5) as i32;
         let (chart_area, info_area) = root.split_horizontally(chart_width);
 
         let x_min = 0.0f64;
@@ -258,9 +262,9 @@ fn render_chart_rgb(
         let y_max = data.iter().map(|d| d.1).fold(f64::NEG_INFINITY, f64::max) + 50.0;
 
         let mut chart = ChartBuilder::on(&chart_area)
-            .margin(10)
-            .x_label_area_size(20)
-            .y_label_area_size(40)
+            .margin(10 * SCALE)
+            .x_label_area_size(20 * SCALE)
+            .y_label_area_size(40 * SCALE)
             .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
 
         // Extract HH:MM from timestamp strings, converted to Zurich timezone
@@ -284,13 +288,13 @@ fn render_chart_rgb(
             .configure_mesh()
             .disable_x_mesh()
             .disable_y_mesh()
-            .x_labels(6)
+            .x_labels(10)
             .x_label_formatter(&|x| {
                 let idx = *x as usize;
                 time_labels.get(idx).cloned().unwrap_or_default()
             })
-            .x_label_style(("sans-serif", 14).into_font().color(&BLACK))
-            .y_label_style(("sans-serif", 14).into_font().color(&BLACK))
+            .x_label_style(("sans-serif", 14 * SCALE).into_font().color(&BLACK))
+            .y_label_style(("sans-serif", 14 * SCALE).into_font().color(&BLACK))
             .draw()?;
 
         chart.draw_series(LineSeries::new(indexed.into_iter(), &BLACK))?;
@@ -298,11 +302,11 @@ fn render_chart_rgb(
         let chart_dim = chart_area.dim_in_pixel();
         chart_area.draw_text(
             "CO2 Living Room [ppm]",
-            &("sans-serif", 12)
+            &("sans-serif", 12 * SCALE)
                 .into_font()
                 .color(&BLACK)
                 .pos(Pos::new(HPos::Right, VPos::Top)),
-            (chart_dim.0 as i32 - 12, 12),
+            (chart_dim.0 as i32 - 12 * SCALE as i32, 12 * SCALE as i32),
         )?;
 
         // Vertical separator between chart and info panel
@@ -319,8 +323,8 @@ fn render_chart_rgb(
             ))?;
         }
 
-        let label_style = ("sans-serif", 12).into_font().color(&BLACK);
-        let value_style = ("sans-serif", 20).into_font().color(&BLACK);
+        let label_style = ("sans-serif", 12 * SCALE).into_font().color(&BLACK);
+        let value_style = ("sans-serif", 20 * SCALE).into_font().color(&BLACK);
 
         let scalars: [(&str, Option<f64>, &str); 4] = [
             ("Temperature", temperature, "C"),
@@ -336,7 +340,7 @@ fn render_chart_rgb(
             info_area.draw_text(
                 label,
                 &label_style.pos(Pos::new(HPos::Center, VPos::Top)),
-                (center_x, y_offset + 8),
+                (center_x, y_offset + 8 * SCALE as i32),
             )?;
 
             let value_text = match val {
@@ -346,11 +350,30 @@ fn render_chart_rgb(
             info_area.draw_text(
                 &value_text,
                 &value_style.pos(Pos::new(HPos::Center, VPos::Center)),
-                (center_x, y_offset + cell_h / 2 + 8),
+                (center_x, y_offset + cell_h / 2 + 8 * SCALE as i32),
             )?;
         }
 
         root.present()?;
+    }
+
+    // Downscale from 2x to 1x with averaging
+    let mut rgb_buf = vec![0u8; (W * H * 3) as usize];
+    for y in 0..H as usize {
+        for x in 0..W as usize {
+            for c in 0..3 {
+                let mut sum = 0u32;
+                for dy in 0..SCALE as usize {
+                    for dx in 0..SCALE as usize {
+                        let hi_x = x * SCALE as usize + dx;
+                        let hi_y = y * SCALE as usize + dy;
+                        sum += hi_buf[(hi_y * sw as usize + hi_x) * 3 + c] as u32;
+                    }
+                }
+                rgb_buf[(y * W as usize + x) * 3 + c] =
+                    (sum / (SCALE * SCALE) as u32) as u8;
+            }
+        }
     }
 
     Ok(rgb_buf)
