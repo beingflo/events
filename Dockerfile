@@ -15,7 +15,7 @@ COPY ./service .
 RUN cargo build --release --bin events
 
 FROM debian:bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends fontconfig fonts-dejavu && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app/
 COPY --from=builder /usr/src/events/service/target/release/events /usr/src/app/
