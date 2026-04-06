@@ -89,11 +89,14 @@ pub async fn get_dashboard(_headers: HeaderMap) -> Result<impl IntoResponse, App
         AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
+    let refresh_seconds = env::var("DASHBOARD_REFRESH_SECONDS").unwrap_or_else(|_| "120".into());
+
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
         "application/octet-stream".parse().unwrap(),
     );
+    headers.insert("X-Refresh-Seconds", refresh_seconds.parse().unwrap());
 
     Ok((StatusCode::OK, headers, png_bytes))
 }
