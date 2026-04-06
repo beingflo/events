@@ -128,7 +128,7 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     LIMIT 1;
     ");
 
-    let humidity_query = format!(
+    let humidity_laundry_query = format!(
         "
     SELECT
         avg(JSONExtractFloat(SpanAttributes['payload'], 'humidity')) as humidity
@@ -142,15 +142,31 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     "
     );
 
+    let humidity_living_query = format!(
+        "
+    SELECT
+        avg(JSONExtractFloat(SpanAttributes['payload'], 'humidity')) as humidity_avg
+    FROM
+        events.otel_traces
+    WHERE
+        JSONHas(SpanAttributes['payload'], 'humidity')
+        AND SpanName = 'data'
+        AND SpanAttributes['bucket'] = 'co2-sensor-living-room'
+        AND Timestamp >= {max_ts_subquery} - INTERVAL 1 HOUR;
+    "
+    );
+
     let co2_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &co2_query).await?;
     let temperature_data =
         ch_query(&client, &ch_url, &ch_user, &ch_password, &temperature_query).await?;
     let pressure_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &pressure_query).await?;
-    let humidity_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_query).await?;
+    let humidity_laundry_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_laundry_query).await?;
+    let humidity_living_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_living_query).await?;
 
     let temperature: Option<f64> = parse_scalar(&temperature_data, "temperature");
     let pressure: Option<f64> = parse_scalar(&pressure_data, "pressure");
-    let humidity: Option<f64> = parse_scalar(&humidity_data, "humidity");
+    let humidity_laundry: Option<f64> = parse_scalar(&humidity_laundry_data, "humidity");
+    let humidity_living: Option<f64> = parse_scalar(&humidity_living_data, "humidity_avg");
 
     let data_points = parse_co2_data(&co2_data);
     if data_points.is_empty() {
@@ -164,7 +180,7 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
         .map(|v| v.contains("image/png") || v.contains("image/*") || v.contains("*/*"))
         .unwrap_or(false);
 
-    let rgb_buf = render_chart_rgb(&data_points, temperature, pressure, humidity).map_err(|e| {
+    let rgb_buf = render_chart_rgb(&data_points, temperature, pressure, humidity_laundry, humidity_living).map_err(|e| {
         error!(message = "Failed to render chart", %e);
         AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
@@ -216,7 +232,8 @@ fn render_chart_rgb(
     data: &[(String, f64)],
     temperature: Option<f64>,
     pressure: Option<f64>,
-    humidity: Option<f64>,
+    humidity_laundry: Option<f64>,
+    humidity_living: Option<f64>,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut rgb_buf = vec![0u8; (W * H * 3) as usize];
 
@@ -232,7 +249,7 @@ fn render_chart_rgb(
         let root = BitMapBackend::with_buffer(&mut rgb_buf, (W, H)).into_drawing_area();
         root.fill(&WHITE)?;
 
-        let chart_width = (W * 3 / 4) as i32;
+        let chart_width = (W * 4 / 5) as i32;
         let (chart_area, info_area) = root.split_horizontally(chart_width);
 
         let x_min = 0.0f64;
@@ -274,45 +291,50 @@ fn render_chart_rgb(
 
         chart.draw_series(LineSeries::new(indexed.into_iter(), &BLACK))?;
 
+        let chart_dim = chart_area.dim_in_pixel();
+        chart_area.draw_text(
+            "CO2 Living Room [ppm]",
+            &("sans-serif", 12)
+                .into_font()
+                .color(&BLACK)
+                .pos(Pos::new(HPos::Right, VPos::Top)),
+            (chart_dim.0 as i32 - 12, 12),
+        )?;
+
         // Vertical separator between chart and info panel
         let info_dim = info_area.dim_in_pixel();
         let info_w = info_dim.0 as i32;
         let info_h = info_dim.1 as i32;
-        let cell_h = info_h / 3;
+        let cell_h = info_h / 4;
 
         info_area.draw(&PathElement::new(vec![(0, 0), (0, info_h)], &BLACK))?;
+        for row in 1..4 {
+            info_area.draw(&PathElement::new(
+                vec![(0, cell_h * row), (info_w, cell_h * row)],
+                &BLACK,
+            ))?;
+        }
 
-        // Horizontal separators between scalar cells
-        info_area.draw(&PathElement::new(
-            vec![(0, cell_h), (info_w, cell_h)],
-            &BLACK,
-        ))?;
-        info_area.draw(&PathElement::new(
-            vec![(0, cell_h * 2), (info_w, cell_h * 2)],
-            &BLACK,
-        ))?;
+        let label_style = ("sans-serif", 12).into_font().color(&BLACK);
+        let value_style = ("sans-serif", 20).into_font().color(&BLACK);
 
-        let label_style = ("sans-serif", 14).into_font().color(&BLACK);
-        let value_style = ("sans-serif", 24).into_font().color(&BLACK);
-
-        let scalars: [(&str, Option<f64>, &str); 3] = [
+        let scalars: [(&str, Option<f64>, &str); 4] = [
             ("Temperature", temperature, "C"),
             ("Pressure", pressure, "hPa"),
-            ("Humidity Laundry", humidity, "%"),
+            ("Hum. Laundry", humidity_laundry, "%"),
+            ("Hum. Living", humidity_living, "%"),
         ];
 
         for (i, (label, val, unit)) in scalars.iter().enumerate() {
             let y_offset = cell_h * i as i32;
             let center_x = info_w / 2;
 
-            // Label centered at top of cell
             info_area.draw_text(
                 label,
                 &label_style.pos(Pos::new(HPos::Center, VPos::Top)),
                 (center_x, y_offset + 8),
             )?;
 
-            // Value centered in remaining space
             let value_text = match val {
                 Some(v) => format!("{v:.1} {unit}"),
                 None => "--".to_string(),
