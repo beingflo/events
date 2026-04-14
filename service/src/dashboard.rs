@@ -54,6 +54,21 @@ fn parse_scalar(json: &Value, field: &str) -> Option<f64> {
 
 #[tracing::instrument(skip_all)]
 pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, AppError> {
+    let Some((_, secret)) = env::vars().find(|v| v.0.eq("DASHBOARD_SECRET")) else {
+        error!("DASHBOARD_SECRET not in environment");
+        return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
+    };
+
+    let provided = req_headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+
+    match provided {
+        Some(token) if token == secret => {}
+        _ => return Err(AppError::Status(StatusCode::UNAUTHORIZED)),
+    }
+
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
@@ -141,8 +156,22 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
     let co2_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &co2_query).await?;
     let temperature_data =
         ch_query(&client, &ch_url, &ch_user, &ch_password, &temperature_query).await?;
-    let humidity_laundry_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_laundry_query).await?;
-    let humidity_living_data = ch_query(&client, &ch_url, &ch_user, &ch_password, &humidity_living_query).await?;
+    let humidity_laundry_data = ch_query(
+        &client,
+        &ch_url,
+        &ch_user,
+        &ch_password,
+        &humidity_laundry_query,
+    )
+    .await?;
+    let humidity_living_data = ch_query(
+        &client,
+        &ch_url,
+        &ch_user,
+        &ch_password,
+        &humidity_living_query,
+    )
+    .await?;
 
     let temperature: Option<f64> = parse_scalar(&temperature_data, "temperature");
     let humidity_laundry: Option<f64> = parse_scalar(&humidity_laundry_data, "humidity");
@@ -162,7 +191,14 @@ pub async fn get_dashboard(req_headers: HeaderMap) -> Result<impl IntoResponse, 
 
     let latest_co2: Option<f64> = data_points.last().map(|(_, co2)| *co2);
 
-    let rgb_buf = render_chart_rgb(&data_points, temperature, latest_co2, humidity_laundry, humidity_living).map_err(|e| {
+    let rgb_buf = render_chart_rgb(
+        &data_points,
+        temperature,
+        latest_co2,
+        humidity_laundry,
+        humidity_living,
+    )
+    .map_err(|e| {
         error!(message = "Failed to render chart", %e);
         AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
@@ -274,8 +310,14 @@ fn render_chart_rgb(
                 let idx = *x as usize;
                 time_labels.get(idx).cloned().unwrap_or_default()
             })
-            .x_label_style(FontDesc::new(FontFamily::SansSerif, 16.0 * SCALE as f64, FontStyle::Bold).color(&BLACK))
-            .y_label_style(FontDesc::new(FontFamily::SansSerif, 16.0 * SCALE as f64, FontStyle::Bold).color(&BLACK))
+            .x_label_style(
+                FontDesc::new(FontFamily::SansSerif, 16.0 * SCALE as f64, FontStyle::Bold)
+                    .color(&BLACK),
+            )
+            .y_label_style(
+                FontDesc::new(FontFamily::SansSerif, 16.0 * SCALE as f64, FontStyle::Bold)
+                    .color(&BLACK),
+            )
             .draw()?;
 
         chart.draw_series(LineSeries::new(
@@ -307,8 +349,12 @@ fn render_chart_rgb(
             ))?;
         }
 
-        let label_style = FontDesc::new(FontFamily::SansSerif, 16.0 * SCALE as f64, FontStyle::Bold).color(&BLACK);
-        let value_style = FontDesc::new(FontFamily::SansSerif, 24.0 * SCALE as f64, FontStyle::Bold).color(&BLACK);
+        let label_style =
+            FontDesc::new(FontFamily::SansSerif, 16.0 * SCALE as f64, FontStyle::Bold)
+                .color(&BLACK);
+        let value_style =
+            FontDesc::new(FontFamily::SansSerif, 24.0 * SCALE as f64, FontStyle::Bold)
+                .color(&BLACK);
 
         let scalars: [(&str, Option<f64>, &str); 4] = [
             ("Temperature", temperature, "C"),
@@ -354,8 +400,7 @@ fn render_chart_rgb(
                         sum += hi_buf[(hi_y * sw as usize + hi_x) * 3 + c] as u32;
                     }
                 }
-                rgb_buf[(y * W as usize + x) * 3 + c] =
-                    (sum / (SCALE * SCALE) as u32) as u8;
+                rgb_buf[(y * W as usize + x) * 3 + c] = (sum / (SCALE * SCALE) as u32) as u8;
             }
         }
     }
